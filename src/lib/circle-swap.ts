@@ -15,12 +15,19 @@ export function normalizeToken(token: string): string {
   return alias;
 }
 
-export async function executeSwap(params: {
+interface SwapLegResult {
+  txHash: string;
+  explorerUrl: string;
+  amountOut?: string;
+  estimatedOutput?: string;
+}
+
+async function singleSwap(params: {
   walletAddress: string;
   fromToken: string;
   toToken: string;
   amount: string;
-}): Promise<{ txHash: string; explorerUrl: string; estimatedOutput?: string }> {
+}): Promise<SwapLegResult> {
   const adapter = createCircleWalletsAdapter({
     apiKey: process.env.CIRCLE_API_KEY!,
     entitySecret: process.env.CIRCLE_ENTITY_SECRET!,
@@ -56,6 +63,33 @@ export async function executeSwap(params: {
   return {
     txHash,
     explorerUrl: txHash ? `https://testnet.arcscan.app/tx/${txHash}` : "",
-    estimatedOutput: estimate?.estimatedOutput,
+    amountOut: result?.amountOut,
+    estimatedOutput: estimate?.estimatedOutput?.amount,
   };
+}
+
+export async function executeSwap(params: {
+  walletAddress: string;
+  fromToken: string;
+  toToken: string;
+  amount: string;
+}): Promise<{ txHash: string; explorerUrl: string; estimatedOutput?: string }> {
+  const from = normalizeToken(params.fromToken);
+  const to = normalizeToken(params.toToken);
+
+  // No direct liquidity pool exists between EURC and cirBTC on Arc Testnet —
+  // route through USDC automatically (EURC -> USDC -> cirBTC, or reverse).
+  if (from !== "USDC" && to !== "USDC") {
+    const leg1 = await singleSwap({ ...params, toToken: "USDC" });
+    if (!leg1.amountOut) throw new Error(`${from} → USDC leg failed: no output amount returned`);
+    const leg2 = await singleSwap({
+      walletAddress: params.walletAddress,
+      fromToken: "USDC",
+      toToken: params.toToken,
+      amount: leg1.amountOut,
+    });
+    return { txHash: leg2.txHash, explorerUrl: leg2.explorerUrl, estimatedOutput: leg2.estimatedOutput };
+  }
+
+  return singleSwap(params);
 }
