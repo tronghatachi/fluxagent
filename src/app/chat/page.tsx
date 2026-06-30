@@ -23,6 +23,7 @@ type Message = { role: "user" | "assistant"; text: string };
 
 const QUICK_CMDS = [
   "Swap 1 USDC to EURC",
+  "Swap 1 USDC to cirBTC",
   "Check my balance",
   "What's the EURC rate?",
   "Transaction history",

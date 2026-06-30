@@ -86,7 +86,8 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:3000 --max-time 5)",
       "Bash(npm install *)",
       "Bash(npm uninstall *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(curl -s https://fluxagent.vercel.app/api/rate -X POST -H \"Content-Type: application/json\" -d '{\"fromToken\":\"USDC\",\"toToken\":\"cirBTC\"}')"
     ]
   }
 }

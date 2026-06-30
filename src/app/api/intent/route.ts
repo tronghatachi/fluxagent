@@ -9,7 +9,7 @@ Detect the user's language (English, Vietnamese, or Simplified Chinese) and resp
 Parse the user's message into one of these intents and return ONLY valid JSON (no markdown):
 
 1. Swap intent:
-{"intent":"swap","fromToken":"USDC|EURC","toToken":"USDC|EURC","amount":"<number as string>","reply":"<short confirmation in user's language>"}
+{"intent":"swap","fromToken":"USDC|EURC|cirBTC","toToken":"USDC|EURC|cirBTC","amount":"<number as string>","reply":"<short confirmation in user's language>"}
 
 2. Transfer/send intent (user wants to send tokens to an address):
 {"intent":"transfer","token":"USDC|EURC","amount":"<number as string>","toAddress":"<0x address>","reply":"<short confirmation in user's language>"}

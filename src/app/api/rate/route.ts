@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { AppKit } from "@circle-fin/app-kit";
 import { createCircleWalletsAdapter } from "@circle-fin/adapter-circle-wallets";
 import { circleClient } from "@/lib/circle-client";
+import { normalizeToken } from "@/lib/circle-swap";
 
 export async function POST(req: Request) {
   try {
@@ -20,8 +21,8 @@ export async function POST(req: Request) {
     const kit = new AppKit();
     const estimate = await kit.estimateSwap({
       from: { adapter, chain: "Arc_Testnet", address: wallet.address },
-      tokenIn: fromToken.toUpperCase() as any,
-      tokenOut: toToken.toUpperCase() as any,
+      tokenIn: normalizeToken(fromToken) as any,
+      tokenOut: normalizeToken(toToken) as any,
       amountIn: "1",
       config: { kitKey: process.env.NEXT_PUBLIC_CIRCLE_KIT_KEY! },
     });
