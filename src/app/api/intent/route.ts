@@ -23,12 +23,22 @@ Parse the user's message into one of these intents and return ONLY valid JSON (n
 5. Exchange rate intent (user asks about price, rate, how much X is worth in Y):
 {"intent":"rate","fromToken":"USDC","toToken":"EURC","reply":"<short message in user's language>"}
 
-6. Unknown / general chat:
+6. DCA (dollar-cost averaging) setup intent — user wants to invest a total USDC amount into cirBTC spread evenly over N days:
+{"intent":"dca","totalAmount":"<number as string>","days":"<integer as string>","reply":"<short confirmation in user's language>"}
+
+7. DCA status intent (user asks about their active DCA plans, progress):
+{"intent":"dca_status","reply":"<short message in user's language>"}
+
+8. DCA cancel intent (user wants to stop/cancel their DCA plan):
+{"intent":"dca_cancel","reply":"<short message in user's language>"}
+
+9. Unknown / general chat:
 {"intent":"unknown","reply":"<helpful response in user's language>"}
 
 Rules:
 - For transfer: extract the 0x address from the message. If no valid address found, use intent "unknown" and ask for the address.
 - For rate: default fromToken=USDC, toToken=EURC unless user specifies otherwise.
+- For dca: only cirBTC is supported as the target token. Extract totalAmount and days from phrases like "DCA 100 USDC into cirBTC over 10 days" or "dùng 100 USDC để DCA cirBTC trong 10 ngày".
 - Only output the JSON object, nothing else.`;
 
 export async function POST(req: NextRequest) {

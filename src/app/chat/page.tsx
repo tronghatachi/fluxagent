@@ -27,6 +27,8 @@ const QUICK_CMDS = [
   "What's the EURC rate?",
   "Transaction history",
   "Send 1 USDC to 0x1234...",
+  "DCA 100 USDC to cirBTC over 10 days",
+  "Show my DCA plans",
 ];
 
 export default function ChatPage() {
@@ -41,6 +43,11 @@ export default function ChatPage() {
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
   const [eurcBalance, setEurcBalance] = useState<string | null>(null);
 
+  const [refCode, setRefCode] = useState<string | null>(null);
+  const [points, setPoints] = useState(0);
+  const [refCount, setRefCount] = useState(0);
+  const [refPoints, setRefPoints] = useState(0);
+
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -54,6 +61,45 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isLoggedIn = !!user;
   const displayAddress = circleAddress ?? privyAddress;
+
+  // Register referral on login
+  useEffect(() => {
+    if (!user) return;
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get("ref") ?? undefined;
+    fetch("/api/referral", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "register", userId: user.id, referrerCode: ref }),
+    })
+      .then((r) => r.json())
+      .then((d) => { setRefCode(d.refCode); setPoints(d.points); setRefCount(d.refCount); setRefPoints(d.refPoints); })
+      .catch(() => {});
+  }, [user]);
+
+  const refreshPoints = () => {
+    if (!user) return;
+    fetch("/api/referral", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "info", userId: user.id }),
+    })
+      .then((r) => r.json())
+      .then((d) => { setPoints(d.points); setRefCount(d.refCount); setRefPoints(d.refPoints); })
+      .catch(() => {});
+  };
+
+  const awardPoint = () => {
+    if (!user) return;
+    fetch("/api/referral", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "award", userId: user.id }),
+    })
+      .then((r) => r.json())
+      .then((d) => { setPoints(d.points); setRefCount(d.refCount); setRefPoints(d.refPoints); })
+      .catch(() => {});
+  };
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -157,6 +203,7 @@ export default function ChatPage() {
           const txHash = txData.txHash ?? "";
           const explorerUrl = txHash ? `https://testnet.arcscan.app/tx/${txHash}` : `Tx ID: ${txData.txId ?? "submitted"}`;
           addMsg("assistant", `✅ Sent ${data.amount} ${data.token} to ${data.toAddress.slice(0, 10)}...\n${explorerUrl}`);
+          awardPoint();
           setTimeout(refreshBalances, 4000);
         } catch (err) {
           addMsg("assistant", `Transfer failed: ${(err as Error).message}`);
@@ -219,9 +266,77 @@ export default function ChatPage() {
           const swapData = await swapRes.json();
           if (swapData.error) throw new Error(swapData.error);
           addMsg("assistant", `✅ Swap complete!\nTx: ${swapData.explorerUrl ?? swapData.txHash}`);
+          awardPoint();
           setTimeout(refreshBalances, 4000);
         } catch (err) {
           addMsg("assistant", `Swap failed: ${(err as Error).message}`);
+        }
+      }
+      if (data.intent === "dca") {
+        if (!isLoggedIn) { addMsg("assistant", "Please log in first."); return; }
+        setLoadingMsg("Setting up DCA plan...");
+        try {
+          const { walletId, address: walletAddress } = await ensureCircleWallet();
+          const res = await fetch("/api/dca", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "create",
+              userId: user!.id,
+              walletId,
+              walletAddress,
+              toToken: "cirBTC",
+              totalAmount: data.totalAmount,
+              days: data.days,
+            }),
+          });
+          const planData = await res.json();
+          if (planData.error) throw new Error(planData.error);
+          const p = planData.plan;
+          addMsg("assistant", `✅ DCA plan created!\n${p.totalAmount} USDC → cirBTC over ${p.days} days\n~${p.dailyAmount.toFixed(4)} USDC/day, executed automatically once daily.`);
+        } catch (err) {
+          addMsg("assistant", `DCA setup failed: ${(err as Error).message}`);
+        }
+      }
+
+      if (data.intent === "dca_status") {
+        if (!isLoggedIn) { addMsg("assistant", "Please log in first."); return; }
+        setLoadingMsg("Loading DCA plans...");
+        try {
+          const res = await fetch("/api/dca", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "list", userId: user!.id }),
+          });
+          const d = await res.json();
+          const plans: any[] = d.plans ?? [];
+          if (plans.length === 0) {
+            addMsg("assistant", "You have no DCA plans yet.");
+          } else {
+            const lines = plans.map((p) =>
+              `• ${p.totalAmount} USDC → cirBTC, ${p.daysExecuted}/${p.days} days done — ${p.status}`
+            );
+            addMsg("assistant", `📊 Your DCA plans:\n${lines.join("\n")}`);
+          }
+        } catch (err) {
+          addMsg("assistant", `Could not fetch DCA plans: ${(err as Error).message}`);
+        }
+      }
+
+      if (data.intent === "dca_cancel") {
+        if (!isLoggedIn) { addMsg("assistant", "Please log in first."); return; }
+        setLoadingMsg("Cancelling DCA plan...");
+        try {
+          const res = await fetch("/api/dca", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "cancel", userId: user!.id }),
+          });
+          const d = await res.json();
+          if (d.error) throw new Error(d.error);
+          addMsg("assistant", d.cancelled > 0 ? `✅ Cancelled ${d.cancelled} active DCA plan(s).` : "No active DCA plans to cancel.");
+        } catch (err) {
+          addMsg("assistant", `Could not cancel DCA: ${(err as Error).message}`);
         }
       }
     } catch {
@@ -268,6 +383,44 @@ export default function ChatPage() {
               >Copy</button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Referral & Points */}
+      {isLoggedIn && refCode && (
+        <div className="card" style={{ paddingBottom: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#8892a4", textTransform: "uppercase", letterSpacing: "0.05em" }}>Referral & Points</span>
+            <button className="btn btn-secondary btn-sm" onClick={refreshPoints}>↻</button>
+          </div>
+          <div className="token-row">
+            <div className="token-chip">
+              <div>
+                <div className="symbol">Points</div>
+                <div className="amount">{points}</div>
+              </div>
+            </div>
+            <div className="token-chip">
+              <div>
+                <div className="symbol">Referrals</div>
+                <div className="amount">{refCount}</div>
+              </div>
+            </div>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 11, color: "#8892a4" }}>
+            Ref points: {refPoints}/1000
+          </div>
+          <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, color: "#8892a4", flexShrink: 0 }}>Invite link:</span>
+            <span className="address-text" style={{ fontFamily: "monospace", fontSize: 11, userSelect: "all", wordBreak: "break-all" }}>
+              {typeof window !== "undefined" ? `${window.location.origin}/chat?ref=${refCode}` : ""}
+            </span>
+            <button
+              className="btn btn-secondary btn-sm"
+              style={{ padding: "3px 10px", fontSize: 11 }}
+              onClick={() => navigator.clipboard.writeText(`${window.location.origin}/chat?ref=${refCode}`)}
+            >Copy</button>
+          </div>
         </div>
       )}
 

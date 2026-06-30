@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 export default function Home() {
@@ -5,10 +6,15 @@ export default function Home() {
     <div className="page">
       {/* Hero */}
       <div className="card" style={{ textAlign: "center", padding: "40px 24px 36px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginBottom: 20 }}>
+          <Image src="/Logo.png" alt="FluxAgent" width={56} height={56} style={{ borderRadius: 14 }} />
+          <h1 style={{ fontSize: 38, fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>
+            <span style={{ color: "#fff" }}>Flux</span><span style={{ color: "#a78bfa" }}>Agent</span>
+          </h1>
+        </div>
         <div style={{ display: "inline-block", background: "#161d2e", border: "1px solid #1e2740", borderRadius: 20, padding: "4px 14px", fontSize: 12, color: "#8892a4", fontWeight: 600, letterSpacing: "0.05em", marginBottom: 20 }}>
           AI · DeFi · Arc Testnet
         </div>
-        <h1 style={{ fontSize: 42, fontWeight: 800, color: "#a78bfa", marginBottom: 14, letterSpacing: "-0.02em" }}>FluxAgent</h1>
         <p style={{ color: "#8892a4", fontSize: 16, maxWidth: 400, margin: "0 auto 28px", lineHeight: 1.6 }}>
           Your AI-powered crypto agent. Swap, transfer, and manage stablecoins on Arc Testnet — just chat.
         </p>
