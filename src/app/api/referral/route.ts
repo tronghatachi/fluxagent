@@ -10,18 +10,18 @@ export async function POST(req: Request) {
     }
 
     if (action === "register") {
-      const user = getOrCreateUser(userId, referrerCode);
+      const user = await getOrCreateUser(userId, referrerCode);
       return NextResponse.json(user);
     }
 
     if (action === "info") {
-      const user = getOrCreateUser(userId);
+      const user = await getOrCreateUser(userId);
       return NextResponse.json(user);
     }
 
     if (action === "award") {
-      awardTransactionPoint(userId);
-      const user = getUserInfo(userId);
+      await awardTransactionPoint(userId);
+      const user = await getUserInfo(userId);
       return NextResponse.json(user);
     }
 
