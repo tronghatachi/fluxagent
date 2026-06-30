@@ -19,8 +19,7 @@ export const TOKENS = {
   },
   cirBTC: {
     symbol: "cirBTC",
-    // Address not confirmed yet — fill in once available from Arc Docs.
-    address: "" as const,
+    address: "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF" as const,
     decimals: 8,
   },
 } as const;

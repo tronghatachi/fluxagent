@@ -43,6 +43,7 @@ export default function ChatPage() {
 
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
   const [eurcBalance, setEurcBalance] = useState<string | null>(null);
+  const [cirbtcBalance, setCirbtcBalance] = useState<string | null>(null);
 
   const [refCode, setRefCode] = useState<string | null>(null);
   const [points, setPoints] = useState(0);
@@ -109,7 +110,7 @@ export default function ChatPage() {
 
   // Fetch balances whenever address changes
   useEffect(() => {
-    if (!displayAddress) { setUsdcBalance(null); setEurcBalance(null); return; }
+    if (!displayAddress) { setUsdcBalance(null); setEurcBalance(null); setCirbtcBalance(null); return; }
     const addr = displayAddress as `0x${string}`;
     publicClient.getBalance({ address: addr })
       .then((r) => setUsdcBalance(parseFloat(formatUnits(r, TOKENS.USDC.decimals)).toFixed(4)))
@@ -117,6 +118,9 @@ export default function ChatPage() {
     publicClient.readContract({ address: TOKENS.EURC.address, abi: erc20Abi, functionName: "balanceOf", args: [addr] })
       .then((r) => setEurcBalance(parseFloat(formatUnits(r as bigint, TOKENS.EURC.decimals)).toFixed(4)))
       .catch(() => setEurcBalance("—"));
+    publicClient.readContract({ address: TOKENS.cirBTC.address, abi: erc20Abi, functionName: "balanceOf", args: [addr] })
+      .then((r) => setCirbtcBalance(parseFloat(formatUnits(r as bigint, TOKENS.cirBTC.decimals)).toFixed(6)))
+      .catch(() => setCirbtcBalance("—"));
   }, [displayAddress]);
 
   const refreshBalances = () => {
@@ -127,6 +131,9 @@ export default function ChatPage() {
       .catch(() => {});
     publicClient.readContract({ address: TOKENS.EURC.address, abi: erc20Abi, functionName: "balanceOf", args: [addr] })
       .then((r) => setEurcBalance(parseFloat(formatUnits(r as bigint, TOKENS.EURC.decimals)).toFixed(4)))
+      .catch(() => {});
+    publicClient.readContract({ address: TOKENS.cirBTC.address, abi: erc20Abi, functionName: "balanceOf", args: [addr] })
+      .then((r) => setCirbtcBalance(parseFloat(formatUnits(r as bigint, TOKENS.cirBTC.decimals)).toFixed(6)))
       .catch(() => {});
   };
 
@@ -175,15 +182,18 @@ export default function ChatPage() {
         setLoadingMsg("Fetching balances...");
         const addr = displayAddress as `0x${string}`;
         try {
-          const [usdcRaw, eurcRaw] = await Promise.all([
+          const [usdcRaw, eurcRaw, cirbtcRaw] = await Promise.all([
             publicClient.getBalance({ address: addr }),
             publicClient.readContract({ address: TOKENS.EURC.address, abi: erc20Abi, functionName: "balanceOf", args: [addr] }),
+            publicClient.readContract({ address: TOKENS.cirBTC.address, abi: erc20Abi, functionName: "balanceOf", args: [addr] }),
           ]);
           const usdc = parseFloat(formatUnits(usdcRaw, TOKENS.USDC.decimals)).toFixed(4);
           const eurc = parseFloat(formatUnits(eurcRaw as bigint, TOKENS.EURC.decimals)).toFixed(4);
+          const cirbtc = parseFloat(formatUnits(cirbtcRaw as bigint, TOKENS.cirBTC.decimals)).toFixed(6);
           setUsdcBalance(usdc);
           setEurcBalance(eurc);
-          addMsg("assistant", `💰 Balance:\n• USDC: ${usdc}\n• EURC: ${eurc}`);
+          setCirbtcBalance(cirbtc);
+          addMsg("assistant", `💰 Balance:\n• USDC: ${usdc}\n• EURC: ${eurc}\n• cirBTC: ${cirbtc}`);
         } catch (err) {
           addMsg("assistant", `Could not fetch balance: ${(err as Error).message}`);
         }
@@ -370,6 +380,12 @@ export default function ChatPage() {
               <div>
                 <div className="symbol">EURC</div>
                 <div className="amount">{eurcBalance ?? "—"}</div>
+              </div>
+            </div>
+            <div className="token-chip">
+              <div>
+                <div className="symbol">cirBTC</div>
+                <div className="amount">{cirbtcBalance ?? "—"}</div>
               </div>
             </div>
           </div>
