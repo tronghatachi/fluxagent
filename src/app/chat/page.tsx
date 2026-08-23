@@ -3,9 +3,20 @@
 import { useState, useEffect, useRef } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { createPublicClient, formatUnits, http } from "viem";
+import dynamic from "next/dynamic";
 import { ConnectWallet } from "@/components/ConnectWallet";
 import { arcTestnet } from "@/lib/chains";
 import { TOKENS } from "@/lib/tokens";
+
+const ReceiveModal = dynamic(
+  () => import("@/components/ReceiveModal").then((mod) => mod.ReceiveModal),
+  { ssr: false }
+);
+
+const SendModal = dynamic(
+  () => import("@/components/SendModal").then((mod) => mod.SendModal),
+  { ssr: false }
+);
 
 const publicClient = createPublicClient({ chain: arcTestnet, transport: http() });
 
@@ -24,6 +35,8 @@ type Message = { role: "user" | "assistant"; text: string };
 const QUICK_CMDS = [
   "Swap 1 USDC to EURC",
   "Swap 1 USDC to cirBTC",
+  "Scan QR to Send",
+  "Receive USDC / QR Code",
   "Check my balance",
   "What's the EURC rate?",
   "Transaction history",
@@ -40,6 +53,9 @@ export default function ChatPage() {
   const [circleWalletId, setCircleWalletId] = useState<string | null>(null);
   const [circleAddress, setCircleAddress] = useState<string | null>(null);
   const [walletLoading, setWalletLoading] = useState(false);
+  const [checkingWallet, setCheckingWallet] = useState(true);
+  const [isReceiveOpen, setIsReceiveOpen] = useState(false);
+  const [isSendOpen, setIsSendOpen] = useState(false);
 
   const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
   const [eurcBalance, setEurcBalance] = useState<string | null>(null);
@@ -63,6 +79,53 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isLoggedIn = !!user;
   const displayAddress = circleAddress ?? privyAddress;
+
+  // Check and restore existing swap wallet on login
+  useEffect(() => {
+    if (!user) {
+      setCircleWalletId(null);
+      setCircleAddress(null);
+      setCheckingWallet(false);
+      return;
+    }
+
+    // Try reading from cache immediately for instant UI
+    try {
+      const cached = localStorage.getItem(`arcpilot_wallet_${user.id}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed.walletId && parsed.address) {
+          setCircleWalletId(parsed.walletId);
+          setCircleAddress(parsed.address);
+          setCheckingWallet(false);
+        }
+      }
+    } catch {}
+
+    // Verify/fetch existing wallet from backend
+    fetch("/api/wallet/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: user.id, action: "check" }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.walletId && d.address) {
+          setCircleWalletId(d.walletId);
+          setCircleAddress(d.address);
+          try {
+            localStorage.setItem(
+              `arcpilot_wallet_${user.id}`,
+              JSON.stringify({ walletId: d.walletId, address: d.address })
+            );
+          } catch {}
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        setCheckingWallet(false);
+      });
+  }, [user]);
 
   // Register referral on login
   useEffect(() => {
@@ -154,6 +217,12 @@ export default function ChatPage() {
       if (data.error) throw new Error(data.error);
       setCircleWalletId(data.walletId);
       setCircleAddress(data.address);
+      try {
+        localStorage.setItem(
+          `arcpilot_wallet_${user.id}`,
+          JSON.stringify({ walletId: data.walletId, address: data.address })
+        );
+      } catch {}
       return { walletId: data.walletId, address: data.address };
     } finally {
       setWalletLoading(false);
@@ -334,6 +403,22 @@ export default function ChatPage() {
         }
       }
 
+      if (data.intent === "receive") {
+        if (!displayAddress) {
+          addMsg("assistant", "Please log in first to view your receive QR code.");
+        } else {
+          setIsReceiveOpen(true);
+        }
+      }
+
+      if (data.intent === "scan_send") {
+        if (!displayAddress) {
+          addMsg("assistant", "Please log in first to scan QR codes and send tokens.");
+        } else {
+          setIsSendOpen(true);
+        }
+      }
+
       if (data.intent === "dca_cancel") {
         if (!isLoggedIn) { addMsg("assistant", "Please log in first."); return; }
         setLoadingMsg("Cancelling DCA plan...");
@@ -359,15 +444,86 @@ export default function ChatPage() {
 
   return (
     <div className="page">
+      {/* Chat */}
+      <div className="card" style={{ padding: "16px" }}>
+        {/* Quick commands — always visible */}
+        <div className="quick-cmds">
+          {QUICK_CMDS.map((cmd) => (
+            <button key={cmd} className="quick-cmd" onClick={() => send(cmd)}>{cmd}</button>
+          ))}
+        </div>
+
+        {/* Chat input on top */}
+        <div style={{ marginBottom: 14 }}>
+          <div className="chat-input-row" style={{ marginTop: 0 }}>
+            <textarea
+              rows={2}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Swap 1 USDC to EURC..."
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+              }}
+            />
+            <button className="btn" onClick={() => send()} disabled={loading || !input.trim()}>
+              Send
+            </button>
+          </div>
+        </div>
+
+        {/* Chat history below */}
+        <div className="messages">
+          {messages.map((m, i) => (
+            <div key={i} className={`msg ${m.role}`}>
+              <div className="msg-label">{m.role === "user" ? "You" : "FluxAgent"}</div>
+              <div className="msg-bubble">{m.text}</div>
+            </div>
+          ))}
+          {loading && (
+            <div className="typing">
+              <div className="dot-pulse"><span /><span /><span /></div>
+              <span>{loadingMsg}</span>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+      </div>
+
       {/* Auth */}
       <ConnectWallet />
+
+      {/* Wallet setup — only shown on first-time registration when user has no swap wallet */}
+      {isLoggedIn && !checkingWallet && !circleAddress && (
+        <div className="card" style={{ textAlign: "center" }}>
+          <p style={{ color: "#8892a4", fontSize: 14, marginBottom: 12 }}>Create a swap wallet to use Swap &amp; Transfer</p>
+          <button className="btn" onClick={ensureCircleWallet} disabled={walletLoading}>
+            {walletLoading ? "Creating..." : "⚡ Create swap wallet"}
+          </button>
+        </div>
+      )}
 
       {/* Balance chips */}
       {displayAddress && (
         <div className="card" style={{ paddingBottom: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: "#8892a4", textTransform: "uppercase", letterSpacing: "0.05em" }}>Wallet Balance</span>
-            <button className="btn btn-secondary btn-sm" onClick={refreshBalances}>↻ Refresh</button>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#60a5fa", borderColor: "rgba(96, 165, 250, 0.4)" }}
+                onClick={() => setIsSendOpen(true)}
+              >
+                <span>📤</span> Send / Scan
+              </button>
+              <button
+                className="btn btn-secondary btn-sm"
+                style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#a78bfa", borderColor: "rgba(167, 139, 250, 0.4)" }}
+                onClick={() => setIsReceiveOpen(true)}
+              >
+                <span>📥</span> Receive / QR
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={refreshBalances}>↻ Refresh</button>
+            </div>
           </div>
           <div className="token-row">
             <div className="token-chip">
@@ -441,58 +597,25 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* Wallet setup */}
-      {isLoggedIn && !circleAddress && (
-        <div className="card" style={{ textAlign: "center" }}>
-          <p style={{ color: "#8892a4", fontSize: 14, marginBottom: 12 }}>Create a swap wallet to use Swap &amp; Transfer</p>
-          <button className="btn" onClick={ensureCircleWallet} disabled={walletLoading}>
-            {walletLoading ? "Creating..." : "⚡ Create swap wallet"}
-          </button>
-        </div>
-      )}
+      {/* Receive QR Modal */}
+      <ReceiveModal
+        isOpen={isReceiveOpen}
+        onClose={() => setIsReceiveOpen(false)}
+        address={displayAddress ?? ""}
+      />
 
-      {/* Chat */}
-      <div className="card" style={{ padding: "16px" }}>
-        {/* Quick commands — always visible */}
-        <div className="quick-cmds">
-          {QUICK_CMDS.map((cmd) => (
-            <button key={cmd} className="quick-cmd" onClick={() => send(cmd)}>{cmd}</button>
-          ))}
-        </div>
-
-        <div className="messages">
-          {messages.map((m, i) => (
-            <div key={i} className={`msg ${m.role}`}>
-              <div className="msg-label">{m.role === "user" ? "You" : "FluxAgent"}</div>
-              <div className="msg-bubble">{m.text}</div>
-            </div>
-          ))}
-          {loading && (
-            <div className="typing">
-              <div className="dot-pulse"><span /><span /><span /></div>
-              <span>{loadingMsg}</span>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        <div style={{ marginTop: 12 }}>
-          <div className="chat-input-row">
-            <textarea
-              rows={2}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Swap 1 USDC to EURC..."
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-              }}
-            />
-            <button className="btn" onClick={() => send()} disabled={loading || !input.trim()}>
-              Send
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* Send with Camera QR Modal */}
+      <SendModal
+        isOpen={isSendOpen}
+        onClose={() => setIsSendOpen(false)}
+        onSuccess={() => {
+          awardPoint();
+          setTimeout(refreshBalances, 4000);
+        }}
+        ensureWallet={ensureCircleWallet}
+        usdcBalance={usdcBalance}
+        eurcBalance={eurcBalance}
+      />
     </div>
   );
 }

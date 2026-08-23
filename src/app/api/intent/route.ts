@@ -32,12 +32,20 @@ Parse the user's message into one of these intents and return ONLY valid JSON (n
 8. DCA cancel intent (user wants to stop/cancel their DCA plan):
 {"intent":"dca_cancel","reply":"<short message in user's language>"}
 
-9. Unknown / general chat:
+9. Receive / QR code intent (user wants to receive tokens, show QR code, deposit USDC/EURC/cirBTC, or see their deposit address):
+{"intent":"receive","token":"USDC","reply":"<short message in user's language>"}
+
+10. Scan QR to Send intent (user wants to scan a QR code with device camera to send/transfer tokens, e.g. "quét qr gửi tiền", "scan qr to send", "mở camera quét qr", "gửi bằng qr"):
+{"intent":"scan_send","reply":"<short message in user's language>"}
+
+11. Unknown / general chat:
 {"intent":"unknown","reply":"<helpful response in user's language>"}
 
 FluxAgent's full, currently working feature set (all of these ARE supported — never claim a feature below is unavailable):
 - Swap USDC / EURC / cirBTC with each other
 - Transfer USDC or EURC to an address
+- Scan QR codes with device camera to send/transfer tokens
+- Receive tokens (USDC, EURC, cirBTC) with QR Code
 - Check balance, view transaction history, check exchange rate
 - Set up a DCA plan into cirBTC over N days
 - Check DCA plan status/progress
@@ -63,7 +71,7 @@ export async function POST(req: NextRequest) {
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 300,
+    max_tokens: 600,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: message }],
   });
@@ -80,7 +88,10 @@ export async function POST(req: NextRequest) {
   try {
     parsed = JSON.parse(text);
   } catch {
-    parsed = { intent: "unknown", reply: rawText };
+    // Try to extract reply field from malformed JSON via regex
+    const replyMatch = text.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    const reply = replyMatch ? replyMatch[1].replace(/\\n/g, "\n") : text;
+    parsed = { intent: "unknown", reply };
   }
 
   return NextResponse.json(parsed);

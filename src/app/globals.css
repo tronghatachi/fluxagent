@@ -308,10 +308,16 @@ button:disabled {
   padding: 3px 8px;
 }
 
-/* Responsive */
+/* Responsive & Mobile PWA */
 @media (max-width: 480px) {
+  .navbar {
+    padding-top: max(14px, env(safe-area-inset-top));
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+
   .page {
-    padding: 12px 12px 40px;
+    padding: 12px 12px max(40px, env(safe-area-inset-bottom));
   }
 
   .token-chip .amount {
@@ -319,6 +325,11 @@ button:disabled {
   }
 
   .messages {
-    max-height: 320px;
+    max-height: 340px;
+  }
+
+  /* Prevent auto zoom on input focus on iOS */
+  input, textarea, select {
+    font-size: 16px !important;
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createPlan, getUserPlans, cancelActivePlans } from "@/lib/dca-store";
+import { vaultCreatePlan, vaultCancelPlan } from "@/lib/contracts";
 
 export async function POST(req: Request) {
   try {
@@ -16,6 +17,12 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Invalid amount or days" }, { status: 400 });
       }
       const plan = await createPlan({ userId, walletId, walletAddress, toToken, totalAmount: amount, days: numDays });
+
+      // Lock USDC in Vault on-chain (non-blocking)
+      vaultCreatePlan(plan.id, String(amount), numDays).catch((e) =>
+        console.error("Vault createPlan error:", e?.message ?? e)
+      );
+
       return NextResponse.json({ plan });
     }
 
@@ -25,7 +32,16 @@ export async function POST(req: Request) {
     }
 
     if (action === "cancel") {
+      const plans = await getUserPlans(userId);
       const cancelled = await cancelActivePlans(userId);
+
+      // Cancel each active plan in Vault on-chain (non-blocking)
+      for (const p of plans.filter((p: any) => p.status === "active")) {
+        vaultCancelPlan(p.id).catch((e) =>
+          console.error("Vault cancelPlan error:", e?.message ?? e)
+        );
+      }
+
       return NextResponse.json({ cancelled });
     }
 

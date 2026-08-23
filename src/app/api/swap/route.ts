@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { executeSwap } from "@/lib/circle-swap";
+import { collectSwapFee } from "@/lib/contracts";
 
 export async function POST(req: Request) {
   try {
@@ -9,6 +10,12 @@ export async function POST(req: Request) {
     }
 
     const result = await executeSwap({ walletAddress, fromToken, toToken, amount: String(amount) });
+
+    // Collect 0.1% fee to Treasury (non-blocking — don't fail swap if fee fails)
+    collectSwapFee(String(amount), fromToken).catch((e) =>
+      console.error("Treasury fee error:", e?.message ?? e)
+    );
+
     return NextResponse.json(result);
   } catch (err: any) {
     const msg = err?.message ?? String(err);

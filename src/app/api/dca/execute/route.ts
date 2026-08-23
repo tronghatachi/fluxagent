@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getActivePlanIds, getPlan, recordExecution } from "@/lib/dca-store";
 import { executeSwap } from "@/lib/circle-swap";
+import { vaultExecuteDay } from "@/lib/contracts";
 
 export const maxDuration = 60;
 
@@ -19,6 +20,11 @@ export async function GET(req: Request) {
     if (!plan || plan.status !== "active") continue;
 
     try {
+      // Withdraw daily amount from Vault on-chain
+      vaultExecuteDay(id).catch((e) =>
+        console.error("Vault executeDay error:", e?.message ?? e)
+      );
+
       const { txHash } = await executeSwap({
         walletAddress: plan.walletAddress,
         fromToken: "USDC",
